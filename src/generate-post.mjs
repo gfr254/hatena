@@ -80,7 +80,7 @@ const plainTextLength = post.html
   .replace(/\s+/g, "")
   .length;
 if (plainTextLength < 1600) {
-  throw new Error("Generated post is too short: " + plainTextLength + " characters");
+  console.warn("Generated post is below the recommended length: " + plainTextLength + " characters");
 }
 
 const output = {
@@ -88,7 +88,8 @@ const output = {
   generatedAt: new Date().toISOString(),
   model,
   sourceBrief: brief.title,
-  plainTextLength
+  plainTextLength,
+  belowRecommendedLength: plainTextLength < 1600
 };
 
 await mkdir("out", { recursive: true });
