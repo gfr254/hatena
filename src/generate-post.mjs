@@ -14,7 +14,9 @@ const systemPrompt = [
   "与えられた事実と構成だけを使い、実在の整備履歴、正確な走行ルート、店名、日付、数値、故障診断などは創作しないでください。",
   "整備項目は一般的な出発前確認として表現し、危険な作業を読者に断定的に勧めないでください。",
   "本文はHTML本文のみとし、script、style、iframe、画像URL、Markdownは使わないでください。",
-  "文体は一人称の自然な日本語で、見出し、段落、箇条書きを使って読みやすくしてください。"
+  "文体は一人称の自然な日本語で、見出し、段落、箇条書きを使って読みやすくしてください。",
+  "読み応えを持たせるため、本文はタグを除いた日本語の文字数で1800〜2500文字程度にしてください。",
+  "h2見出しを6〜8個使い、各章に情景描写、旧車との暮らしの実感、読者にも役立つ視点のいずれかを入れてください。"
 ].join("\n");
 
 const userPrompt = [
@@ -27,7 +29,7 @@ const userPrompt = [
   "- excerpt: 80〜120文字程度の導入要約",
   "- metaDescription: 120〜160文字程度の検索向け説明",
   "- tags: 3〜6個のタグ配列",
-  "- html: h2、p、ul、li、strong、em、brだけで構成した本文HTML"
+  "- html: h2、p、ul、li、strong、em、brだけで構成した本文HTML。タグを除いた本文は1800〜2500文字程度"
 ].join("\n");
 
 const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -73,12 +75,20 @@ for (const key of ["title", "excerpt", "metaDescription", "html"]) {
 if (!Array.isArray(post.tags) || post.tags.length === 0) {
   throw new Error("Generated post is missing tags");
 }
+const plainTextLength = post.html
+  .replace(/<[^>]*>/g, "")
+  .replace(/\s+/g, "")
+  .length;
+if (plainTextLength < 1600) {
+  throw new Error("Generated post is too short: " + plainTextLength + " characters");
+}
 
 const output = {
   ...post,
   generatedAt: new Date().toISOString(),
   model,
-  sourceBrief: brief.title
+  sourceBrief: brief.title,
+  plainTextLength
 };
 
 await mkdir("out", { recursive: true });
@@ -87,5 +97,6 @@ console.log(JSON.stringify({
   generated: true,
   title: output.title,
   tags: output.tags,
+  plainTextLength: output.plainTextLength,
   output: "out/post.json"
 }));
