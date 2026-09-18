@@ -5,6 +5,7 @@ const apiKey = process.env.OPENAI_API_KEY;
 const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
 
 if (!apiKey) {
+  console.error("::error title=OpenAI configuration::OPENAI_API_KEY is not set");
   throw new Error("OPENAI_API_KEY is not set");
 }
 
@@ -54,7 +55,9 @@ const response = await fetch("https://api.openai.com/v1/chat/completions", {
 
 if (!response.ok) {
   const detail = await response.text();
-  throw new Error("OpenAI API failed (" + response.status + "): " + detail);
+  const safeDetail = detail.replace(/\s+/g, " ").slice(0, 1200);
+  console.error("::error title=OpenAI API::HTTP " + response.status + ": " + safeDetail);
+  throw new Error("OpenAI API failed (" + response.status + "): " + safeDetail);
 }
 
 const payload = await response.json();
