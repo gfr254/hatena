@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 const post = JSON.parse(await readFile("out/post.json", "utf8"));
 const user = process.env.HATENA_USER;
 const apiKey = process.env.HATENA_API_KEY;
-const blogId = process.env.HATENA_BLOG_ID;
+const blogId = "beetle-life-jp-blog.hatenablog.com";
 
 for (const [name, value] of Object.entries({
   HATENA_USER: user,
