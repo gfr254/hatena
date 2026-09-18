@@ -50,7 +50,9 @@ const response = await fetch(endpoint, {
 
 const responseText = await response.text();
 if (!response.ok) {
-  throw new Error("Hatena AtomPub failed (" + response.status + "): " + responseText);
+  const detail = responseText.replace(/\s+/g, " ").slice(0, 1200);
+  console.error("::error title=Hatena API::HTTP " + response.status + ": " + detail);
+  throw new Error("Hatena AtomPub failed (" + response.status + "): " + detail);
 }
 
 console.log(JSON.stringify({
