@@ -20,6 +20,22 @@ const escapeXml = (value) => String(value)
   .replaceAll('"', "&quot;")
   .replaceAll("'", "&apos;");
 
+function decodeXmlText(value) {
+  return value
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)))
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(parseInt(code, 10)))
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&quot;", "\"")
+    .replaceAll("&apos;", "'")
+    .replaceAll("&amp;", "&");
+}
+
+function normalizeTitle(value) {
+  return value.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase("ja");
+}
+
 const tags = post.tags
   .map((tag) => '<category term="' + escapeXml(tag) + '" />')
   .join("\n  ");
@@ -38,6 +54,25 @@ const endpoint = "https://blog.hatena.ne.jp/" +
   encodeURIComponent(user) + "/" +
   encodeURIComponent(blogId) + "/atom/entry";
 const auth = Buffer.from(user + ":" + apiKey).toString("base64");
+const duplicateCheck = await fetch(endpoint, {
+  headers: { "Authorization": "Basic " + auth, "Accept": "application/atom+xml" }
+});
+if (!duplicateCheck.ok) {
+  throw new Error("Hatena entry list unavailable; publication stopped to prevent duplicates (HTTP " + duplicateCheck.status + ")");
+}
+const feedXml = await duplicateCheck.text();
+if (!/<feed\b[^>]*>/i.test(feedXml)) {
+  throw new Error("Hatena entry list could not be parsed; publication stopped to prevent duplicates");
+}
+const existingTitles = [...feedXml.matchAll(/<entry\b[^>]*>([\s\S]*?)<\/entry\s*>/gi)]
+  .map(([, entry]) => entry.match(/<title\b[^>]*>([\s\S]*?)<\/title\s*>/i)?.[1])
+  .filter(Boolean)
+  .map((title) => normalizeTitle(decodeXmlText(title)));
+if (existingTitles.includes(normalizeTitle(post.title))) {
+  console.log(JSON.stringify({ published: false, skipped: true, reason: "duplicate_title", title: post.title }));
+  process.exit(0);
+}
+
 const response = await fetch(endpoint, {
   method: "POST",
   headers: {
