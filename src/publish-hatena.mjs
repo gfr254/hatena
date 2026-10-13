@@ -54,26 +54,38 @@ const endpoint = "https://blog.hatena.ne.jp/" +
   encodeURIComponent(user) + "/" +
   encodeURIComponent(blogId) + "/atom/entry";
 const auth = Buffer.from(user + ":" + apiKey).toString("base64");
-const duplicateCheck = await fetch(endpoint, {
-  headers: { "Authorization": "Basic " + auth, "Accept": "application/atom+xml" }
-});
-if (!duplicateCheck.ok) {
-  throw new Error("Hatena entry list unavailable; publication stopped to prevent duplicates (HTTP " + duplicateCheck.status + ")");
-}
-const feedXml = await duplicateCheck.text();
-if (!/<feed\b[^>]*>/i.test(feedXml)) {
-  throw new Error("Hatena entry list could not be parsed; publication stopped to prevent duplicates");
-}
-const existingTitles = [...feedXml.matchAll(/<entry\b[^>]*>([\s\S]*?)<\/entry\s*>/gi)]
-  .map(([, entry]) => entry.match(/<title\b[^>]*>([\s\S]*?)<\/title\s*>/i)?.[1])
-  .filter(Boolean)
-  .map((title) => normalizeTitle(decodeXmlText(title)));
-if (existingTitles.includes(normalizeTitle(post.title))) {
-  console.log(JSON.stringify({ published: false, skipped: true, reason: "duplicate_title", title: post.title }));
-  process.exit(0);
-}
+const candidateTitle = normalizeTitle(post.title);
+    const candidateBody = decodeXmlText(post.html).replace(/<[^>]*>/g, " ").normalize("NFKC").toLocaleLowerCase("ja").replace(/\s+/g, " ").trim();
+    const seenPages = new Set();
+    let pageUrl = endpoint;
+    let pageCount = 0;
+    while (pageUrl) {
+      if (seenPages.has(pageUrl) || ++pageCount > 100) throw new Error("Hatena feed pagination did not terminate; publication stopped");
+      seenPages.add(pageUrl);
+      const duplicateCheck = await fetch(pageUrl, { headers: { "Authorization": "Basic " + auth, "Accept": "application/atom+xml" } });
+      if (!duplicateCheck.ok) throw new Error("Hatena entry list unavailable; publication stopped to prevent duplicates (HTTP " + duplicateCheck.status + ")");
+      const feedXml = await duplicateCheck.text();
+      if (!/<feed\b[^>]*>/i.test(feedXml)) throw new Error("Hatena entry list could not be parsed; publication stopped to prevent duplicates");
+      for (const [, entry] of feedXml.matchAll(/<entry\b[^>]*>([\s\S]*?)<\/entry\s*>/gi)) {
+        const titleRaw = entry.match(/<title\b[^>]*>([\s\S]*?)<\/title\s*>/i)?.[1];
+        const bodyRaw = entry.match(/<content\b[^>]*>([\s\S]*?)<\/content\s*>/i)?.[1] ?? entry.match(/<summary\b[^>]*>([\s\S]*?)<\/summary\s*>/i)?.[1] ?? "";
+        if (titleRaw === undefined) throw new Error("Hatena entry could not be parsed; publication stopped to prevent duplicates");
+        const title = normalizeTitle(decodeXmlText(titleRaw));
+        const body = decodeXmlText(bodyRaw).replace(/<[^>]*>/g, " ").normalize("NFKC").toLocaleLowerCase("ja").replace(/\s+/g, " ").trim();
+        const reason = title === candidateTitle ? "duplicate_title" : candidateBody.length >= 80 && body.length >= 80 && body === candidateBody ? "duplicate_body" : null;
+        if (reason) {
+          console.log(JSON.stringify({ published: false, skipped: true, reason, title: post.title }));
+          process.exit(0);
+        }
+      }
+      const nextRaw = feedXml.match(/<link\b[^>]*\brel=["']next["'][^>]*\bhref=["']([^"']+)["']/i)?.[1] ?? feedXml.match(/<link\b[^>]*\bhref=["']([^"']+)["'][^>]*\brel=["']next["']/i)?.[1];
+      if (!nextRaw) { pageUrl = null; continue; }
+      const nextUrl = new URL(decodeXmlText(nextRaw), pageUrl);
+      if (nextUrl.protocol !== "https:" || nextUrl.hostname !== "blog.hatena.ne.jp") throw new Error("Hatena feed returned an unexpected pagination URL");
+      pageUrl = nextUrl.toString();
+    }
 
-const response = await fetch(endpoint, {
+    const response = await fetch(endpoint, {
   method: "POST",
   headers: {
     "Authorization": "Basic " + auth,
