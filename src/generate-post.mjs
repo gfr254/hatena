@@ -55,9 +55,23 @@ try {
     "本文はHTML本文のみとし、script、style、iframe、画像URL、Markdownは使わないでください。",
     "本文はタグを除いた日本語の文字数で1800〜2500文字程度にしてください。"
   ].join("\n");
+  let recentTitles = [];
+  try {
+    const feedResponse = await fetch("https://beetle-life-jp-blog.hatenablog.com/rss");
+    if (feedResponse.ok) {
+      const feedXml = await feedResponse.text();
+      recentTitles = [...feedXml.matchAll(/<item\b[^>]*>[\s\S]*?<title>([\s\S]*?)<\/title>/gi)]
+        .map((match) => match[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replaceAll("&amp;", "&").replaceAll("&lt;", "<").replaceAll("&gt;", ">"))
+        .slice(0, 30);
+    }
+  } catch (error) {
+    console.warn("Recent Hatena titles could not be loaded; the publication duplicate guard remains active: " + error.message);
+  }
   const userPrompt = [
     "次の企画から、はてなブログに投稿できる記事を1本作成してください。",
-    "タイトルは企画のタイトルをそのまま使ってください。",
+    "企画のタイトルはテーマの参考にとどめ、記事内容に合う新しいタイトルを付けてください。",
+    "公開済みタイトルと同じタイトルや、同じ内容の言い換えは避け、別の具体的な切り口を選んでください。",
+    "直近の公開記事タイトル：" + JSON.stringify(recentTitles),
     "",
     JSON.stringify(brief, null, 2),
     "",
